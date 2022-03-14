@@ -1,0 +1,2 @@
+class EmptyFormException(Exception):
+    pass

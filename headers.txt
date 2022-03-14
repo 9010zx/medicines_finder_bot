@@ -1,0 +1,19 @@
+Host: auto.ru
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:91.0) Gecko/20100101 Firefox/91.0
+Accept: */*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br    
+x-client-app-version: 0402a27770a
+x-page-request-id: 9850ad1619a3475a4be9c2cf811362f7
+x-client-date: 1629747615710
+x-csrf-token: ee91cc3dd7108cbffcca49f998666dcb365f02ef59b8f777
+x-requested-with: fetch
+content-type: application/json
+Origin: https://auto.ru
+Content-Length: 169
+DNT: 1
+Connection: keep-alive
+Cookie: _csrf_token=ee91cc3dd7108cbffcca49f998666dcb365f02ef59b8f777; autoru_sid=a%3Ag6123efb22d2gg9ctt4ea1m153r22q54.edf926b12c5d5526b679355d7c5701a5%7C1629745074987.604800.6zbOyIHW33tXHfyYBj5R_g._bPR4noTuZeEa6rVKdwlBZRh7PxCOJ8G1IAh0dWqWOU; autoruuid=g6123efb22d2gg9ctt4ea1m153r22q54.edf926b12c5d5526b679355d7c5701a5; suid=154f81cada6228c61babf3630143b443.bbd9ac228cccca2d3f7c2b06047d2b15; from_lifetime=1629747431950; from=direct; X-Vertis-DC=vla; yuidlt=1; yandexuid=2800768911626083357; my=YwA%3D; bltsr=1; autoru-visits-count=1; autoru-visits-session-unexpired=1; listing_view_session={%22sort%22:%22fresh_relevance_1-desc%22}; listing_view={%22version%22:1}; _cookie_exchange=listing_view=1632339615651
+Sec-Fetch-Dest: empty
+Sec-Fetch-Mode: same-origin
+Sec-Fetch-Site: same-origin

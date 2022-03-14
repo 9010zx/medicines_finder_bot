@@ -1,0 +1,7 @@
+venv/
+.env
+__pycache__/
+data/db/*
+!data/db/README.md
+bot_old.py
+db/
