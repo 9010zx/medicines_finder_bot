@@ -15,3 +15,9 @@ def generate_drug_forms_keyboard(data):
         logging.info(form)
     return forms_keyboard_markup
 
+def generate_pharmacy_geo_keyboard(koords):
+    pharmacy_keyboard_markup = InlineKeyboardMarkup()
+    return pharmacy_keyboard_markup.add(
+        InlineKeyboardButton('Показать на карте', callback_data=koords)
+    )
+
