@@ -65,8 +65,10 @@ async def find_forms(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(state=DrugStates.drug_forms)
 async def choose_form(callback_query: types.CallbackQuery, state: FSMContext):
+    await bot.edit_message_reply_markup(callback_query.message.chat.id, callback_query.message.message_id)
     finder = Finder()
     form_json = get_from_redis(callback_query.data)
+    await bot.send_message(callback_query.from_user.id, f'Выбрана форма выпуска: {form_json}')
     koord = await state.get_data()
     sio.on('form_lvl_2_answer', finder.store_recived_msg)
     await sio.emit(
