@@ -1,31 +1,28 @@
 import json
-import logging
+from medicines_finder import socketio
+from medicines_finder.redis_connect import send_to_redis , get_from_redis
 from medicines_finder import exc
-from medicines_finder.redis_connect import send_to_redis
-import aiogram.utils.markdown as fmt
+import logging
+from aiogram.utils import markdown as fmt
 
 
 class Finder:
-
-    def store_recived_msg(self, data):
-        self.recived_msg = data
-
-    def prepare_msg(self):
-        for i in self.recived_msg[:5]:
-            koord = json.dumps([i['map1'], i['map2']])
-            msg = fmt.text(
-                fmt.text('Название:', i['nmfirm']),
-                fmt.text('Адрес:', i['str']),
-                fmt.text('Время работы:', i['time']),
-                fmt.text('Стоимость:', i['price']),
-                sep='\n',
-            )
-            yield msg, koord 
+    def __init__(self, event, user_id, drug_name):
+        self.drug_search_msg = self.__set_drug_search_dict(drug_name)
+        self.event = event
+        self.forms_redis_key = f'{user_id}_{event}'
         
+    async def get_forms(self):
+        await socketio.connect_to_allapteki(
+            self.event,
+            self.drug_search_msg,
+            self.forms_redis_key
+        )
+    def remove_forms_from_redis(self):
+        pass
 
-    @staticmethod
-    def get_search_dict(drug_name, koord: list):
-        raw = {
+    def __set_drug_search_dict(self,drug_name):
+        search_dict = {
             "type":"lekar",
             "string":drug_name,
             "input_select":"false",
@@ -36,19 +33,27 @@ class Finder:
                 "apteka":[],
                 "near":False,
                 "krugl":False,
-                "geolocation":True,
-                "koord":koord,
+                "geolocation":False,
+                "koord":"",
                 }
             }
-        return raw
+        return search_dict
 
     @staticmethod
-    def get_search_dict_lvl_2(cdprep, cdform, koord: list):
-        raw = {
-            "type":"form_lvl_2",
-            "cdprep":cdprep,
-            "cdform":cdform,
-            "search_settings":{
+    async def append_choosen_form(user_id, data):
+        logging.info(f'{user_id} request {data}')
+        try:
+            data_for_send = await get_from_redis(user_id)
+        except exc.EmptyDataException:
+            await send_to_redis(user_id, [data])
+            return
+        data_for_send.append(data)
+        await send_to_redis(user_id, data_for_send)
+
+    @staticmethod
+    async def get_price(user_id, koord:list):
+        drugs = await get_from_redis(user_id)
+        search_settings = {
                 "city":["1"],
                 "rayon":[],
                 "street":[],
@@ -57,15 +62,30 @@ class Finder:
                 "krugl":False,
                 "geolocation":True,
                 "koord":koord,
+        }
+        if len(drugs) == 1:
+            search_msg = {
+                "type":"form_lvl_2",
+                "cdprep":drugs[0]['cdprep'],
+                "cdform":drugs[0]['cdform'],
                 }
-            }
-        return raw
-    
-def get_drug_forms(forms: list):
-    if not forms:
-        logging.error('Forms is empty')
-        raise exc.EmptyFormException('Forms is empty')
-    for form in forms:
-        callable_data = form['form'][:30]
-        send_to_redis(callable_data, json.dumps(form, ensure_ascii=False))
-        yield form['form'], callable_data
+            search_msg['search_settings'] = search_settings
+            event = 'form_lvl_2'
+        else:
+            search_msg = {"type":"group",
+                "mass_id_lek":[],
+                }
+            for drug in drugs:
+                mass_id = {
+                    'cdprep': drug['cdprep'],
+                    'cdform': drug['cdform']
+                }
+                search_msg['mass_id_lek'].append(mass_id)
+            search_msg['search_settings'] = search_settings
+            event = 'lekarstva_group_seach'
+        
+        key = f"{user_id}_{event}"
+        await socketio.connect_to_allapteki(event, search_msg, key)
+        return key
+
+        

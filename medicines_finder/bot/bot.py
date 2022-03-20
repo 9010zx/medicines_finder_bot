@@ -1,16 +1,16 @@
 import json
 import logging
-import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from config import ALL_APTEKI, BOT_TOKEN_API
+from config import BOT_TOKEN_API
 from medicines_finder.finder import Finder
-from medicines_finder.bot import keyboard as kb
-from medicines_finder.redis_connect import get_from_redis
-from socketio import AsyncClient
+from aiogram.dispatcher.filters import Text
+from medicines_finder import exc
+from medicines_finder import keyboard as kb
+from medicines_finder.redis_connect import get_from_redis, remove_all_by_user_id, remove_from_redis
+from medicines_finder.formatter import choosen_form, finded_pharmacy, waiting
 
 
 logging.basicConfig(level=logging.INFO)
@@ -18,17 +18,16 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN_API)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
-sio = AsyncClient()
 
 class DrugStates(StatesGroup):
-    start_search = State()
-    drug_forms = State()
+    form_state = State()
+    search_state = State()
+    location_state = State()
 
 @dp.message_handler(commands=['start'])
 async def send_hello(message: types.Message):
     await message.answer(
-        'Привет! Отправь свою геолокацию для дальнейшего поиска',
-        reply_markup=kb.send_location_markup
+        'Привет! Жду названия лекарства.',
     )
 
 @dp.message_handler(state='*', commands='cancel')
@@ -39,56 +38,94 @@ async def cancel_handler(message: types.Message, state: FSMContext):
         return
     logging.info('Cancelling state %r', current_state)
     await state.finish()
-    await sio.disconnect()
+    await remove_all_by_user_id(message.from_user.id)
     await message.reply('Cancelled.', reply_markup=types.ReplyKeyboardRemove())
 
-
-@dp.message_handler(content_types=['location'])
-async def handle_location(message: types.Message, state: FSMContext):
-    await message.answer('Теперь жду названия лекарства')
-    logging.info(message.location)
-    await DrugStates.start_search.set()
-    await state.set_data([message.location['latitude'], message.location['longitude']])
-
-@dp.message_handler(state=DrugStates.start_search)
+@dp.message_handler(state='*')
 async def find_forms(message: types.Message, state: FSMContext):
-    koord = await state.get_data()
-    await sio.connect(ALL_APTEKI)
-    finder = Finder()
-    sio.on('search_lekarstva_answer', finder.store_recived_msg)
-    await sio.emit('search_lekarstva', Finder.get_search_dict(message.text, koord))
-    await asyncio.sleep(2)
-    await DrugStates.drug_forms.set()
-    await message.answer(
-        'Выбери необходимую форму выпуска',
-        reply_markup=kb.generate_drug_forms_keyboard(finder.recived_msg))
-
-@dp.callback_query_handler(state=DrugStates.drug_forms)
-async def choose_form(callback_query: types.CallbackQuery, state: FSMContext):
-    await bot.edit_message_reply_markup(callback_query.message.chat.id, callback_query.message.message_id)
-    finder = Finder()
-    form_json = get_from_redis(callback_query.data)
-    await bot.send_message(callback_query.from_user.id, f'Выбрана форма выпуска: {form_json}')
-    koord = await state.get_data()
-    sio.on('form_lvl_2_answer', finder.store_recived_msg)
-    await sio.emit(
-        'form_lvl_2', 
-        Finder.get_search_dict_lvl_2(form_json['cdprep'], form_json['cdform'], koord)
+    drug_name = await exc.drug_name_filter(message.text)
+    if not drug_name:
+        await message.answer(
+            'Некорректный зарпос. Попробуй еще раз.'
+        )
+        return
+    finder = Finder(
+        user_id=message.from_user.id,
+        event='search_lekarstva',
+        drug_name=drug_name
     )
-    await asyncio.sleep(2)
-    logging.info(finder.recived_msg)
-    await sio.disconnect()
-    for msg, koords in finder.prepare_msg():
-        await bot.send_message(callback_query.from_user.id, msg, reply_markup=kb.generate_pharmacy_geo_keyboard(koords))
-    await DrugStates.start_search.set()
+    await finder.get_forms()
+    try:
+        await message.answer(
+            'Выберите форму выпуска',
+            reply_markup=await kb.generate_drug_forms_keyboard(finder.forms_redis_key)
+        )
+    except exc.EmptyFormException:
+        await message.answer(
+            'Не найдены формы выпуска. Попробуй ещё раз.'
+        )
+        return
+    await DrugStates.form_state.set()
 
-@dp.callback_query_handler(state='*')
-async def send_pharmacy_location(callback_query: types.CallbackQuery):
+@dp.callback_query_handler(text='find', state='*')
+async def wait_search_request(callback_query: types.CallbackQuery, state: FSMContext):
+    await bot.edit_message_reply_markup(
+        callback_query.message.chat.id,
+        callback_query.message.message_id
+    )
+    search_request = await get_from_redis(callback_query.from_user.id)
+    for drug in search_request:
+        await bot.send_message(
+            callback_query.from_user.id,
+            choosen_form(drug)
+
+        )
+    await bot.send_message(
+        callback_query.from_user.id,
+        f'Для дальнейшего поиска, отправь местолоположение',
+        reply_markup=kb.send_locaction()
+    )
+    await DrugStates.search_state.set()
+
+@dp.callback_query_handler(state=DrugStates.form_state)
+async def choose_form(callback_query: types.CallbackQuery, state: FSMContext):
+    await bot.edit_message_reply_markup(
+        callback_query.message.chat.id,
+        callback_query.message.message_id
+    )
+    form_json = await get_from_redis(callback_query.data)
+    await bot.send_message(
+        callback_query.from_user.id,
+        waiting(form_json),
+        reply_markup=kb.find()
+    )
+    await Finder.append_choosen_form(callback_query.from_user.id, form_json)
+
+@dp.message_handler(content_types=['location'], state=DrugStates.search_state)
+async def handle_location(message: types.Message, state: FSMContext):
+    logging.info(message.location)
+    koord = [message.location['latitude'], message.location['longitude']]
+    key = await Finder.get_price(message.from_user.id, koord)
+    price_list = await get_from_redis(key)
+    if price_list:
+        for pharmacy in price_list[:2]:
+            pharm_koord = [pharmacy['map1'], pharmacy['map2']]
+            await message.answer(
+                finded_pharmacy(pharmacy),
+                reply_markup=kb.pharmacy_geolocation(pharm_koord),
+                parse_mode='Markdown'
+            )
+    else:
+        await message.answer('Не найдено аптек по близости. Попробуйте другой запрос.')
+    await DrugStates.location_state.set()
+    await remove_all_by_user_id(message.from_user.id) # WARNING!
+    
+@dp.callback_query_handler(state=DrugStates.location_state)
+async def send_pharmacy_location(callback_query: types.CallbackQuery, state: FSMContext):
     koords = json.loads(callback_query.data)
-    await bot.send_location(callback_query.from_user.id, longitude=koords[0], latitude=koords[1])
-
-@dp.message_handler()
-async def wait_koord(message: types.Message):
-    await message.answer(
-        'Отправь геолокацию перед началом поиска'
+    logging.info(koords)
+    await bot.send_location(
+        callback_query.from_user.id,
+        latitude=koords[1],
+        longitude=koords[0]
     )
