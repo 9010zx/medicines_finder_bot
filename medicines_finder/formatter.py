@@ -10,6 +10,7 @@ def choosen_form(drug):
     )
     return msg
 
+
 def finded_pharmacy(pharmacy):
     msg = fmt.text(
         fmt.text('Название:', pharmacy['nmfirm']),
@@ -19,6 +20,7 @@ def finded_pharmacy(pharmacy):
         sep='\n'
     )
     return msg
+
 
 def waiting(choosen_form):
     msg = fmt.text(

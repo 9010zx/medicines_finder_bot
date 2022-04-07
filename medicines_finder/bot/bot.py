@@ -9,7 +9,7 @@ from medicines_finder.finder import Finder
 from aiogram.dispatcher.filters import Text
 from medicines_finder import exc
 from medicines_finder import keyboard as kb
-from medicines_finder.redis_connect import get_from_redis, remove_all_by_user_id, remove_from_redis
+from medicines_finder.redis_connect import get_from_redis, remove_all_by_user_id
 from medicines_finder.formatter import choosen_form, finded_pharmacy, waiting
 
 
@@ -19,16 +19,19 @@ bot = Bot(token=BOT_TOKEN_API)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
+
 class DrugStates(StatesGroup):
     form_state = State()
     search_state = State()
     location_state = State()
+
 
 @dp.message_handler(commands=['start'])
 async def send_hello(message: types.Message):
     await message.answer(
         'Привет! Жду названия лекарства.',
     )
+
 
 @dp.message_handler(state='*', commands='cancel')
 @dp.message_handler(Text(equals='cancel', ignore_case=True), state='*')
@@ -40,6 +43,7 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     await state.finish()
     await remove_all_by_user_id(message.from_user.id)
     await message.reply('Cancelled.', reply_markup=types.ReplyKeyboardRemove())
+
 
 @dp.message_handler(state='*')
 async def find_forms(message: types.Message, state: FSMContext):
@@ -67,6 +71,7 @@ async def find_forms(message: types.Message, state: FSMContext):
         return
     await DrugStates.form_state.set()
 
+
 @dp.callback_query_handler(text='find', state='*')
 async def wait_search_request(callback_query: types.CallbackQuery, state: FSMContext):
     await bot.edit_message_reply_markup(
@@ -87,6 +92,7 @@ async def wait_search_request(callback_query: types.CallbackQuery, state: FSMCon
     )
     await DrugStates.search_state.set()
 
+
 @dp.callback_query_handler(state=DrugStates.form_state)
 async def choose_form(callback_query: types.CallbackQuery, state: FSMContext):
     await bot.edit_message_reply_markup(
@@ -100,6 +106,7 @@ async def choose_form(callback_query: types.CallbackQuery, state: FSMContext):
         reply_markup=kb.find()
     )
     await Finder.append_choosen_form(callback_query.from_user.id, form_json)
+
 
 @dp.message_handler(content_types=['location'], state=DrugStates.search_state)
 async def handle_location(message: types.Message, state: FSMContext):
@@ -118,8 +125,9 @@ async def handle_location(message: types.Message, state: FSMContext):
     else:
         await message.answer('Не найдено аптек по близости. Попробуйте другой запрос.')
     await DrugStates.location_state.set()
-    await remove_all_by_user_id(message.from_user.id) # WARNING!
-    
+    await remove_all_by_user_id(message.from_user.id)  # WARNING!
+
+
 @dp.callback_query_handler(state=DrugStates.location_state)
 async def send_pharmacy_location(callback_query: types.CallbackQuery, state: FSMContext):
     koords = json.loads(callback_query.data)

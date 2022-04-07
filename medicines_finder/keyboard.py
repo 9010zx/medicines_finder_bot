@@ -1,6 +1,5 @@
 import json
 import logging
-from types import GeneratorType
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from medicines_finder.finder import Finder
 from medicines_finder.redis_connect import send_to_redis, get_from_redis

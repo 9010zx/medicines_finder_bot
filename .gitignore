@@ -5,5 +5,4 @@ data/db/*
 !data/db/README.md
 bot_old.py
 db/
-testing.py
 medicines_finder_old/

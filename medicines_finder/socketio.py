@@ -1,10 +1,7 @@
-import asyncio
 import logging
 from socketio import AsyncClient
 from config import ALL_APTEKI
 from medicines_finder.redis_connect import send_to_redis
-from medicines_finder import exc
-import json
 
 
 async def connect_to_allapteki(event, msg, key):
@@ -14,6 +11,7 @@ async def connect_to_allapteki(event, msg, key):
         event += '_get'
     await sio.connect(ALL_APTEKI)
     logging.info('Connected to allapteki.ru')
+
     @sio.on(event_answer)
     async def handle_recived_msg(data):
         logging.info(f'Get data from allapteki.ru: {data}')
@@ -22,4 +20,3 @@ async def connect_to_allapteki(event, msg, key):
 
     await sio.emit(event, msg)
     await sio.wait()
-
